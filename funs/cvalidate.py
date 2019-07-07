@@ -1,9 +1,9 @@
 #util.py
 # A module that contains various small functions that the main engine makes use of.
-import funs.learning as learning
-import funs.inference as inference
-import funs.engine as engine
-import funs.util as util
+import learning
+import inference
+import engine
+import util
 import numpy as np
 import scipy as sp
 import scipy.io as sio
@@ -36,11 +36,11 @@ class crossValidation():
         print('Error Func') 
         print(errorFunc)
 
-        trainingSet, testSet = splitTrainingTestDataset(experiment, numTrainingTrials, numTestTrials)
+        trainingSet, testSet = util.splitTrainingTestDataset(experiment, numTrainingTrials, numTestTrials)
         errs = []
         fits = []
         for xdimFit in np.arange(0,maxXdim+1):
-            initParams = initializeParams(xdimFit, trainingSet.ydim, trainingSet)
+            initParams = util.initializeParams(xdimFit, trainingSet.ydim, trainingSet)
             #print("params") 
             #print(initParams) 
             #print("\n")
@@ -105,7 +105,7 @@ class crossValidation():
     def plotPredictionError(self):
         plt.figure(figsize=(5,4))
         plt.plot(np.arange(1,self.maxXdim+1),self.errs,'b.-',markersize=5,linewidth=2)
-        plt.legend([self.method],fontsize=9,framealpha=0.2)
+        #plt.legend([self.method],fontsize=9,framealpha=0.2)
         plt.xlabel('Latent Dimensionality')
         plt.ylabel('Error')
         plt.title('Latent Dimension vs. Prediction Error')
