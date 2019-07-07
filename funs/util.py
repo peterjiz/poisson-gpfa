@@ -1,8 +1,8 @@
 #util.py
 # A module that contains various small functions that the main engine makes use of.
-import funs.learning as learning
-import funs.inference as inference
-import funs.engine as engine
+import learning
+import inference
+import engine
 import numpy as np
 import scipy as sp
 import scipy.io as sio
@@ -177,88 +177,6 @@ class loadDataHighData():
         self.raster = allRaster
         self.avgFR = np.sum(self.raster,1)/self.numTrials/self.trialDur*1000
 
-class crossValidation():
-    def __init__(
-        self,
-        experiment,
-        numTrainingTrials = 10,
-        numTestTrials = 2,
-        maxXdim = 6,
-        maxEMiter = 3,
-        batchSize = 5,
-        inferenceMethod = 'laplace',
-        learningMethod = 'batch'):
-        print('Assessing optimal latent dimensionality will take a long time.')
-
-        trainingSet, testSet = splitTrainingTestDataset(experiment, numTrainingTrials, numTestTrials)
-        errs = []
-        fits = []
-        for xdimFit in np.arange(1,maxXdim+1):
-            initParams = initializeParams(xdimFit, trainingSet.ydim, trainingSet)
-            
-            if learningMethod == 'batch':
-                fit = engine.PPGPFAfit(
-                    experiment = trainingSet, 
-                    initParams = initParams, 
-                    inferenceMethod = inferenceMethod,
-                    EMmode = 'Batch', 
-                    maxEMiter = maxEMiter)
-                predBatch,predErr = leaveOneOutPrediction(fit.optimParams, testSet)
-                errs.append(predErr)
-
-            if learningMethod == 'diag':
-                fit = engine.PPGPFAfit(
-                    experiment = trainingSet, 
-                    initParams = initParams, 
-                    inferenceMethod = inferenceMethod,
-                    EMmode = 'Online', 
-                    onlineParamUpdateMethod = 'diag',
-                    maxEMiter = maxEMiter,
-                    batchSize = batchSize)
-                predDiag,predErr = leaveOneOutPrediction(fit.optimParams, testSet)
-                errs.append(predErr)
-            
-            if learningMethod == 'hess':
-                fit = engine.PPGPFAfit(
-                    experiment = trainingSet, 
-                    initParams = initParams, 
-                    inferenceMethod = inferenceMethod,
-                    EMmode = 'Online', 
-                    onlineParamUpdateMethod = 'hess',
-                    maxEMiter = maxEMiter,
-                    batchSize = batchSize)
-                predHess,predErr = leaveOneOutPrediction(fit.optimParams, testSet)
-                errs.append(predErr)
-            
-            if learningMethod == 'grad':
-                fit = engine.PPGPFAfit(
-                    experiment = trainingSet, 
-                    initParams = initParams, 
-                    inferenceMethod = inferenceMethod,
-                    EMmode = 'Online', 
-                    onlineParamUpdateMethod = 'grad',
-                    maxEMiter = maxEMiter,
-                    batchSize = batchSize)
-                predGrad,predErr = leaveOneOutPrediction(fit.optimParams, testSet)
-                errs.append(predErr)
-            fits.append(fit)
-
-        self.inferenceMethod = inferenceMethod
-        self.learningMethod = learningMethod
-        self.optimXdim=np.argmin(errs)+1 # because python indexes from 0 
-        self.errs = errs
-        self.maxXdim = maxXdim
-        self.fits = fits
-
-    def plotPredictionError(self):
-        plt.figure(figsize=(5,4))
-        plt.plot(np.arange(1,self.maxXdim+1),self.errs,'b.-',markersize=5,linewidth=2)
-        plt.legend([self.method],fontsize=9,framealpha=0.2)
-        plt.xlabel('Latent Dimensionality')
-        plt.ylabel('Error')
-        plt.title('Latent Dimension vs. Prediction Error')
-        plt.grid(which='both')
-        plt.tight_layout()
 
 def splitTrainingTestDataset(experiment, numTrainingTrials, numTestTrials):
     if numTestTrials + numTrainingTrials > experiment.numTrials:
@@ -516,12 +434,17 @@ def initializeParams(xdim, ydim, experiment = None):
     ========
          A dictionary of model parameters.
     '''
+    
+    xdim_fix = xdim 
+    if xdim_fix == 0: 
+        xdim_fix = 1
+    
     if experiment == None:
         print('Initializing parameters randomly..')
         params = {
             'C': np.random.rand(ydim,xdim)*2 - 1,
             'd': np.random.randn(ydim)*2 - 2,
-            'tau': np.random.rand(xdim)*0.5}   # seconds
+            'tau': np.random.rand(xdim_fix)*0.5}   # seconds
     if experiment != None:
         print('Initializing parameters with Poisson-PCA..')
         # make a long raster from all trials called
@@ -553,8 +476,12 @@ def initializeParams(xdim, ydim, experiment = None):
         params = {
             'C': initC,
             'd': initd,
-            # 'tau': np.linspace(0.1,1,xdim)}   # seconds
-            'tau': np.random.rand(xdim)*0.5+0.1}   # seconds
+            # 'tau': np.linspace(0.1,1,xdim_fix)}   # seconds
+            'tau': np.random.rand(xdim_fix)*0.5+0.1}   # seconds 
+    
+    #if xdim == 0:
+    #    params['C'] = None #np.zeros(np.shape(params['C']))
+    
     return params
 
 def CdtoVecCd(C, d):
@@ -586,13 +513,29 @@ def vecCdtoCd(vecCd, xdim, ydim):
     ========
       * C : numpy array of shape (xdim, ydim), loading matrix
     '''
+    #print("C BIG")     
     matCd = np.reshape(vecCd, [xdim+1, ydim]).T
     C = matCd[:,:xdim]
     d = matCd[:,xdim]
     return C, d
 
 def makeCd_big(params, T):
-    C_big = np.kron(params['C'],np.eye(T)).T
+    
+    q, p = np.shape(params['C']) 
+    if p == 0: 
+        #print("Dealing with 0 latent variables") 
+        C_temp = np.zeros((q, 1))
+        C_temp = np.kron(C_temp, np.eye(T)).T 
+        C_big = np.zeros((0, np.shape(C_temp)[1]))
+        #C_big = np.zeros((np.shape(C_temp)[0], np.shape(C_temp)[1]))
+        #C_big = []
+        #C_big = None
+    else: 
+        C_big = np.kron(params['C'],np.eye(T)).T 
+        
+    
+    #print(np.shape(C_big))
+    
     d_big = np.kron(np.ndarray.flatten(params['d']),np.ones(T)).T
     return C_big, d_big
 
@@ -873,12 +816,12 @@ class dataset:
         ax_d = plt.subplot(gs[1,0])
         ax_K = plt.subplot(gs[:,1])
 
-        ax_C.imshow(self.datasetDetails['params']['C'].T, interpolation = "nearest")
+        ax_C.imshow(self.params['C'].T, interpolation = "nearest")
         ax_C.set_title('$C_{true}$')
         ax_C.set_ylabel('Latent Dimension Index')
         ax_C.set_xlabel('Neuron Index')
         ax_C.set_yticks(range(self.xdim))
-        ax_d.plot(self.datasetDetails['params']['d'].T)
+        ax_d.plot(self.params['d'].T)
         ax_d.set_title('$d_{true}$')
         ax_d.set_xlabel('Neuron Index')
         ax_K.imshow(self.K_big, interpolation = "nearest")

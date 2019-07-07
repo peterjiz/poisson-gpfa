@@ -18,8 +18,17 @@ def negLogPosteriorUnNorm(xbar, ybar, C_big, d_big, K_bigInv, xdim, ydim):
     d_big = np.asarray(d_big)
 
     K_bigInv = np.asarray(K_bigInv)
-
+    
     A = np.dot(C_big.T, xbar) + d_big
+    
+    #print("d_big:")
+    #print(d_big)
+    #print("\n")
+    
+    #print("A:")
+    #print(A)
+    #print("\n")
+    
     Aexp = np.exp(A)
 
     L1 = np.dot(Aexp, np.ones(ydim*T))
@@ -50,18 +59,26 @@ def negLogPosteriorUnNorm_grad(xbar, ybar, C_big, d_big, K_bigInv, xdim, ydim):
 def negLogPosteriorUnNorm_hess(xbar, ybar, C_big, d_big, K_bigInv, xdim, ydim):
     xbar = np.asarray(xbar)
     ybar = np.asarray(ybar)
-
-    T = int(len(xbar)/xdim)
-
-    A = np.dot(C_big.T, xbar) + d_big
-    A = np.float64(A)
-
-    Aexp = np.exp(A)
-    Aexpdiagonal = sp.sparse.spdiags(Aexp,0,ydim*T,ydim*T)
-    temp = Aexpdiagonal.dot(C_big.T)
-
-    ddL = np.dot(C_big, temp) + K_bigInv
-
+    
+    T = 0
+    if xdim == 0: 
+        T = int(len(xbar)/1) 
+        A = d_big 
+        A = np.float64(A) 
+        
+        Aexp = np.exp(A) 
+        Aexpdiagonal = sp.sparse.spdiags(Aexp,0,ydim*T,ydim*T)
+        ddL = Aexpdiagonal + K_bigInv
+    else: 
+        T = int(len(xbar)/xdim)  
+        A = np.dot(C_big.T, xbar) + d_big 
+        A = np.float64(A) 
+        
+        Aexp = np.exp(A) 
+        Aexpdiagonal = sp.sparse.spdiags(Aexp,0,ydim*T,ydim*T)
+        temp = Aexpdiagonal.dot(C_big.T)
+        ddL = np.dot(C_big, temp) + K_bigInv
+    
     return ddL
 
 def laplace(experiment, params, prevOptimRes = None, returnOptimRes = True, verbose = False, optimMethod = 'Newton-CG'):
@@ -77,6 +94,15 @@ def laplace(experiment, params, prevOptimRes = None, returnOptimRes = True, verb
     binSize = experiment.binSize
 
     # make big parameters
+    #print("params") 
+    #print(params) 
+    #print("\n")
+    _, xdim = np.shape(params['C']) 
+    #if xdim == 0: 
+    #    print("Dealing with 0 latent variables") 
+    import importlib
+    importlib.reload(util)
+    
     C_big, d_big = util.makeCd_big(params,T)
     K_big, K = util.makeK_big(params, trialDur, binSize)
     K_bigInv = np.linalg.inv(K_big)
@@ -100,6 +126,10 @@ def laplace(experiment, params, prevOptimRes = None, returnOptimRes = True, verb
             xInit = np.ndarray.flatten(np.zeros([xdim*T,1]))
         else:
             xInit = prevOptimRes[trial]
+        
+        #print("x0")
+        #print(xInit)
+        #print("\n")
 
         # Automatic differentiation doesn't work
         if False:
